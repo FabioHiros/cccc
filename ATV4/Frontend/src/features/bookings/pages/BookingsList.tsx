@@ -1,35 +1,93 @@
-// src/features/bookings/pages/BookingsList.tsx - CLEAN VERSION
+// src/features/bookings/pages/BookingsList.tsx - WITH MOCK DATA FALLBACK
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { FaPlus, FaSearch, FaEye, FaEdit, FaCalendarAlt, FaUser, FaBed } from 'react-icons/fa';
+import { FaPlus, FaSearch, FaEye, FaEdit, FaCalendarAlt, FaUser, FaBed, FaExclamationTriangle } from 'react-icons/fa';
 import { PageHeader, Button, Card, Spinner, Table, Alert } from '../../../components/ui';
 import { estadiaService } from '../../../api/services';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
+// Mock bookings data
+const mockBookings = [
+  {
+    id: 'mock-booking-1',
+    primaryId: 'mock-guest-1',
+    roomId: 'mock-room-2',
+    arrivalDate: '2025-06-25T00:00:00.000Z',
+    departDate: '2025-06-27T00:00:00.000Z',
+    status: 'CONFIRMED',
+    primary: {
+      id: 'mock-guest-1',
+      fullName: 'João Silva Santos',
+      displayName: 'João Silva'
+    },
+    room: {
+      id: 'mock-room-2',
+      designation: 'Romantic Couple Suite'
+    }
+  },
+  {
+    id: 'mock-booking-2',
+    primaryId: 'mock-guest-3',
+    roomId: 'mock-room-1',
+    arrivalDate: '2025-06-28T00:00:00.000Z',
+    departDate: '2025-06-30T00:00:00.000Z',
+    status: 'CONFIRMED',
+    primary: {
+      id: 'mock-guest-3',
+      fullName: 'Carlos Eduardo Mendes',
+      displayName: 'Carlos'
+    },
+    room: {
+      id: 'mock-room-1',
+      designation: 'Premium Individual Suite'
+    }
+  },
+  {
+    id: 'mock-booking-3',
+    primaryId: 'mock-guest-4',
+    roomId: 'mock-room-3',
+    arrivalDate: '2025-06-22T00:00:00.000Z',
+    departDate: '2025-06-24T00:00:00.000Z',
+    status: 'COMPLETED',
+    primary: {
+      id: 'mock-guest-4',
+      fullName: 'Ana Paula Costa',
+      displayName: 'Ana'
+    },
+    room: {
+      id: 'mock-room-3',
+      designation: 'Family Suite for up to 2 children'
+    }
+  }
+];
+
 const BookingsList = () => {
   const [search, setSearch] = useState('');
 
+  // TRY TO FETCH FROM BACKEND, FALLBACK TO MOCK DATA
   const { data: response, isLoading, isError } = useQuery({
     queryKey: ['bookings'],
     queryFn: async () => {
       const response = await estadiaService.getAllEstadias();
       return response.data;
-    }
+    },
+    retry: 1,
+    retryDelay: 1000,
   });
 
-  // Extract bookings with multiple fallbacks
-  const bookings = response?.data || response || [];
+  // Extract bookings with multiple fallbacks or use mock data
+  const bookings = isError ? mockBookings : (response?.data || response || []);
+  const isUsingMockData = isError;
   
   const filteredBookings = Array.isArray(bookings) ? bookings.filter(booking => {
     if (!booking) return false;
     
-    // FIXED: Use correct field name from your backend - it's "primary", not "primaryGuest" or "titular"
+    // Use correct field names from your backend
     const guestName = booking.primary?.fullName || 
                      booking.primary?.displayName || '';
                      
-    // FIXED: Use correct field name from your backend - it's "room", not "acomodacao"
     const roomName = booking.room?.designation || '';
                      
     const searchTerm = search.toLowerCase();
@@ -38,51 +96,59 @@ const BookingsList = () => {
            roomName.toLowerCase().includes(searchTerm);
   }) : [];
 
-  const today = new Date();
-  const activeBookings = filteredBookings.filter(booking => {
+  // FIXED: Better status calculation for stats
+  const calculateBookingStatus = (booking: any) => {
     try {
-      // FIXED: Use correct field names - arrivalDate and departDate
-      const checkIn = new Date(booking.arrivalDate);
-      const checkOut = new Date(booking.departDate);
-      return checkIn <= today && checkOut >= today;
-    } catch {
-      return false;
-    }
-  });
+      const arrivalDateStr = booking.arrivalDate.split('T')[0];
+      const departDateStr = booking.departDate.split('T')[0];
+      
+      const today = new Date();
+      const todayStr = today.getFullYear() + '-' + 
+                     String(today.getMonth() + 1).padStart(2, '0') + '-' + 
+                     String(today.getDate()).padStart(2, '0');
 
-  const upcomingBookings = filteredBookings.filter(booking => {
-    try {
-      const checkIn = new Date(booking.arrivalDate);
-      return checkIn > today;
-    } catch {
-      return false;
-    }
-  });
+      const checkInDateStr = arrivalDateStr;  
+      const checkOutDateStr = departDateStr;  
+      const todayDateStr = todayStr;         
 
-  const pastBookings = filteredBookings.filter(booking => {
-    try {
-      const checkOut = new Date(booking.departDate);
-      return checkOut < today;
+      if (checkInDateStr <= todayDateStr && checkOutDateStr >= todayDateStr) {
+        return 'active';
+      } else if (checkOutDateStr < todayDateStr) {
+        return 'completed';
+      } else {
+        return 'upcoming';
+      }
     } catch {
-      return false;
+      return 'upcoming';
     }
-  });
+  };
+
+  const activeBookings = filteredBookings.filter(booking => calculateBookingStatus(booking) === 'active');
+  const upcomingBookings = filteredBookings.filter(booking => calculateBookingStatus(booking) === 'upcoming');
+  const pastBookings = filteredBookings.filter(booking => calculateBookingStatus(booking) === 'completed');
 
   if (isLoading) {
     return <Spinner />;
   }
 
-  if (isError) {
-    return (
-      <Alert 
-        type="error" 
-        message="Error loading bookings. Please try again." 
-      />
-    );
-  }
-
   return (
     <div className="space-y-6">
+      {/* Offline Banner */}
+      {isUsingMockData && (
+        <Alert 
+          type="warning" 
+          message={
+            <div className="flex items-center">
+              <FaExclamationTriangle className="mr-2" />
+              <span>
+                <strong>Demo Mode:</strong> Backend is offline. Showing sample bookings. 
+                Forms are functional but changes won't be saved.
+              </span>
+            </div>
+          }
+        />
+      )}
+
       {/* Page Header */}
       <PageHeader
         title="Booking Management"
@@ -107,6 +173,7 @@ const BookingsList = () => {
             <div className="ml-4">
               <p className="text-gray-500 text-sm font-medium">Total Bookings</p>
               <p className="text-3xl font-bold text-gray-900">{filteredBookings.length}</p>
+              {isUsingMockData && <p className="text-xs text-orange-600">Demo data</p>}
             </div>
           </div>
         </Card>
@@ -119,6 +186,7 @@ const BookingsList = () => {
             <div className="ml-4">
               <p className="text-gray-500 text-sm font-medium">Active Stays</p>
               <p className="text-3xl font-bold text-gray-900">{activeBookings.length}</p>
+              {isUsingMockData && <p className="text-xs text-orange-600">Demo data</p>}
             </div>
           </div>
         </Card>
@@ -131,6 +199,7 @@ const BookingsList = () => {
             <div className="ml-4">
               <p className="text-gray-500 text-sm font-medium">Upcoming</p>
               <p className="text-3xl font-bold text-gray-900">{upcomingBookings.length}</p>
+              {isUsingMockData && <p className="text-xs text-orange-600">Demo data</p>}
             </div>
           </div>
         </Card>
@@ -143,6 +212,7 @@ const BookingsList = () => {
             <div className="ml-4">
               <p className="text-gray-500 text-sm font-medium">Completed</p>
               <p className="text-3xl font-bold text-gray-900">{pastBookings.length}</p>
+              {isUsingMockData && <p className="text-xs text-orange-600">Demo data</p>}
             </div>
           </div>
         </Card>
@@ -182,23 +252,40 @@ const BookingsList = () => {
           <Table headers={['Guest', 'Room', 'Check-in', 'Check-out', 'Status', 'Duration', 'Actions']}>
             {filteredBookings.map((booking) => {
               try {
-                // FIXED: Use exact field names from your backend data
-                const checkIn = new Date(booking.arrivalDate);
-                const checkOut = new Date(booking.departDate);
-                const duration = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+                // FIXED: Better date parsing and comparison
+                const arrivalDateStr = booking.arrivalDate.split('T')[0];
+                const departDateStr = booking.departDate.split('T')[0];
                 
+                const checkIn = new Date(arrivalDateStr + 'T00:00:00');
+                const checkOut = new Date(departDateStr + 'T00:00:00');
+                
+                const today = new Date();
+                const todayStr = today.getFullYear() + '-' + 
+                               String(today.getMonth() + 1).padStart(2, '0') + '-' + 
+                               String(today.getDate()).padStart(2, '0');
+
+                const checkInDateStr = arrivalDateStr;  
+                const checkOutDateStr = departDateStr;  
+                const todayDateStr = todayStr;          
+
                 let status = 'upcoming';
                 let statusColor = 'bg-blue-100 text-blue-800';
                 
-                if (checkIn <= today && checkOut >= today) {
+                // Same logic as other components
+                if (checkInDateStr <= todayDateStr && checkOutDateStr >= todayDateStr) {
                   status = 'active';
                   statusColor = 'bg-green-100 text-green-800';
-                } else if (checkOut < today) {
+                } else if (checkOutDateStr < todayDateStr) {
                   status = 'completed';
                   statusColor = 'bg-gray-100 text-gray-800';
+                } else {
+                  status = 'upcoming';
+                  statusColor = 'bg-blue-100 text-blue-800';
                 }
 
-                // FIXED: Use correct field names from your actual backend response
+                const duration = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24));
+
+                // Use exact field names from your actual backend response
                 const guestName = booking.primary?.fullName || 'Unknown Guest';
                 const roomName = booking.room?.designation || 'Unknown Room';
 
@@ -270,7 +357,7 @@ const BookingsList = () => {
                 return (
                   <tr key={booking.id || Math.random()}>
                     <td colSpan={7} className="px-6 py-4 text-red-500 text-sm">
-                      Error displaying booking data
+                      Error displaying booking data: {error.message}
                     </td>
                   </tr>
                 );

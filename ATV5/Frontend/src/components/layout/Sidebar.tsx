@@ -1,5 +1,5 @@
-// src/components/layout/Sidebar.tsx - SIMPLIFIED TO REDUCE MENU DUPLICATION
-import { Link, useLocation } from 'react-router-dom';
+// src/components/layout/Sidebar.tsx - FIXED NESTED LINK ISSUE
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   FaTachometerAlt, 
   FaUsers, 
@@ -10,6 +10,7 @@ import {
 
 const Sidebar = () => {
   const location = useLocation();
+  const navigate = useNavigate();
 
   const navigation = [
     {
@@ -41,6 +42,12 @@ const Sidebar = () => {
     },
   ];
 
+  const handleQuickAdd = (e: React.MouseEvent, addLink: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    navigate(addLink);
+  };
+
   return (
     <aside className="fixed left-0 top-16 md:top-20 h-[calc(100vh-4rem)] md:h-[calc(100vh-5rem)] w-64 bg-white shadow-xl border-r-2 border-pink-100 z-40 overflow-y-auto transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out">
       <div className="p-6">
@@ -48,13 +55,13 @@ const Sidebar = () => {
           {navigation.map((item) => (
             <div key={item.name} className="space-y-1">
               {/* Main navigation item */}
-              <Link
-                to={item.href}
-                className={`group flex items-center justify-between px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 ${
+              <div
+                className={`group flex items-center justify-between px-4 py-3 text-sm font-medium rounded-xl transition-all duration-200 cursor-pointer ${
                   item.current
                     ? 'bg-gradient-to-r from-pink-500 to-pink-600 text-white shadow-lg'
                     : 'text-gray-700 hover:bg-pink-50 hover:text-pink-600'
                 }`}
+                onClick={() => navigate(item.href)}
               >
                 <div className="flex items-center">
                   <item.icon
@@ -67,19 +74,19 @@ const Sidebar = () => {
                 
                 {/* Quick add button for non-dashboard items */}
                 {item.addLink && (
-                  <Link
-                    to={item.addLink}
+                  <button
+                    onClick={(e) => handleQuickAdd(e, item.addLink)}
                     className={`p-1 rounded-md transition-all duration-200 ${
                       item.current 
                         ? 'text-white hover:bg-white hover:bg-opacity-20' 
                         : 'text-gray-400 hover:text-pink-500 hover:bg-pink-100'
                     }`}
-                    onClick={(e) => e.stopPropagation()}
+                    aria-label={`Add new ${item.name.toLowerCase()}`}
                   >
                     <FaPlus className="h-3 w-3" />
-                  </Link>
+                  </button>
                 )}
-              </Link>
+              </div>
             </div>
           ))}
         </nav>

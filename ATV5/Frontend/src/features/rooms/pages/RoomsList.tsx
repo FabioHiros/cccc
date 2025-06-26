@@ -1,33 +1,128 @@
-// src/features/rooms/pages/RoomsList.tsx
+// src/features/rooms/pages/RoomsList.tsx - WITH MOCK DATA FALLBACK
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { FaPlus, FaSearch, FaEye, FaEdit, FaTrash, FaBed, FaWifi, FaCar } from 'react-icons/fa';
+import { FaPlus, FaSearch, FaEye, FaEdit, FaTrash, FaBed, FaWifi, FaCar, FaExclamationTriangle } from 'react-icons/fa';
 import { PageHeader, Button, Card, Spinner, Table, Modal, Alert } from '../../../components/ui';
 import { acomodacaoService } from '../../../api/services';
-import type { Acomodacao } from '../../../types';
+
+// Mock rooms data
+const mockRooms = [
+  {
+    id: 'mock-room-1',
+    designation: 'Premium Individual Suite',
+    singleBeds: 1,
+    doubleBeds: 0,
+    bathrooms: 1,
+    hasAirControl: true,
+    parkingSpaces: 0,
+    isActive: true,
+    // Legacy field support
+    nomeAcomodacao: 'Premium Individual Suite',
+    camaSolteiro: 1,
+    camaCasal: 0,
+    suite: 1,
+    climatizacao: true,
+    garagem: 0
+  },
+  {
+    id: 'mock-room-2',
+    designation: 'Romantic Couple Suite',
+    singleBeds: 0,
+    doubleBeds: 1,
+    bathrooms: 1,
+    hasAirControl: true,
+    parkingSpaces: 1,
+    isActive: true,
+    nomeAcomodacao: 'Romantic Couple Suite',
+    camaSolteiro: 0,
+    camaCasal: 1,
+    suite: 1,
+    climatizacao: true,
+    garagem: 1
+  },
+  {
+    id: 'mock-room-3',
+    designation: 'Family Suite for up to 2 children',
+    singleBeds: 2,
+    doubleBeds: 1,
+    bathrooms: 1,
+    hasAirControl: true,
+    parkingSpaces: 1,
+    isActive: true,
+    nomeAcomodacao: 'Family Suite for up to 2 children',
+    camaSolteiro: 2,
+    camaCasal: 1,
+    suite: 1,
+    climatizacao: true,
+    garagem: 1
+  },
+  {
+    id: 'mock-room-4',
+    designation: 'Deluxe Family Suite for up to 5 children',
+    singleBeds: 5,
+    doubleBeds: 1,
+    bathrooms: 2,
+    hasAirControl: true,
+    parkingSpaces: 2,
+    isActive: true,
+    nomeAcomodacao: 'Deluxe Family Suite for up to 5 children',
+    camaSolteiro: 5,
+    camaCasal: 1,
+    suite: 2,
+    climatizacao: true,
+    garagem: 2
+  },
+  {
+    id: 'mock-room-5',
+    designation: 'Premium Family Suite for 2 families',
+    singleBeds: 6,
+    doubleBeds: 2,
+    bathrooms: 3,
+    hasAirControl: true,
+    parkingSpaces: 2,
+    isActive: true,
+    nomeAcomodacao: 'Premium Family Suite for 2 families',
+    camaSolteiro: 6,
+    camaCasal: 2,
+    suite: 3,
+    climatizacao: true,
+    garagem: 2
+  }
+];
 
 const RoomsList = () => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [selectedRoom, setSelectedRoom] = useState<Acomodacao | null>(null);
+  const [selectedRoom, setSelectedRoom] = useState<any>(null);
   const [deleteStatus, setDeleteStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
 
-  // KEEP EXISTING API CALL - NO BACKEND CHANGES
+  // TRY TO FETCH FROM BACKEND, FALLBACK TO MOCK DATA
   const { data, isLoading, isError } = useQuery({
     queryKey: ['rooms'],
     queryFn: async () => {
       const response = await acomodacaoService.getAllAcomodacoes();
       return response.data.data || response.data;
-    }
+    },
+    retry: 1,
+    retryDelay: 1000,
   });
+
+  // Use mock data if backend is down
+  const rooms = isError ? mockRooms : data;
+  const isUsingMockData = isError;
 
   const createDefaultsMutation = useMutation({
     mutationFn: () => acomodacaoService.createDefaultAcomodacoes(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
+    },
+    onError: () => {
+      if (isUsingMockData) {
+        alert('⚠️ Demo Mode: Backend is offline. Cannot create default rooms.');
+      }
     }
   });
 
@@ -48,24 +143,32 @@ const RoomsList = () => {
     }
   });
 
-  const handleDeleteClick = (room: Acomodacao) => {
+  const handleDeleteClick = (room: any) => {
+    if (isUsingMockData) {
+      alert('⚠️ Demo Mode: Backend is offline. Delete operations are disabled.');
+      return;
+    }
     setSelectedRoom(room);
     setShowDeleteModal(true);
   };
 
   const confirmDelete = () => {
-    if (selectedRoom) {
+    if (selectedRoom && !isUsingMockData) {
       deleteMutation.mutate(selectedRoom.id);
     }
   };
 
   const handleCreateDefaults = () => {
+    if (isUsingMockData) {
+      alert('⚠️ Demo Mode: Backend is offline. Cannot create default rooms.');
+      return;
+    }
     createDefaultsMutation.mutate();
   };
 
   // Handle both backend field names (designation/nomeAcomodacao)
-  const filteredRooms = Array.isArray(data) ?
-    data.filter(room => 
+  const filteredRooms = Array.isArray(rooms) ?
+    rooms.filter(room => 
       (room.nomeAcomodacao || room.designation || '').toLowerCase().includes(search.toLowerCase())
     ) : [];
 
@@ -73,17 +176,24 @@ const RoomsList = () => {
     return <Spinner />;
   }
 
-  if (isError) {
-    return (
-      <Alert 
-        type="error" 
-        message="Error loading rooms. Please try again." 
-      />
-    );
-  }
-
   return (
     <div className="space-y-6">
+      {/* Offline Banner */}
+      {isUsingMockData && (
+        <Alert 
+          type="warning" 
+          message={
+            <div className="flex items-center">
+              <FaExclamationTriangle className="mr-2" />
+              <span>
+                <strong>Demo Mode:</strong> Backend is offline. Showing sample rooms. 
+                Forms are functional but changes won't be saved.
+              </span>
+            </div>
+          }
+        />
+      )}
+
       {/* Page Header */}
       <PageHeader
         title="Room Management"
@@ -93,7 +203,8 @@ const RoomsList = () => {
             <Button 
               variant="secondary" 
               onClick={handleCreateDefaults}
-              disabled={createDefaultsMutation.isPending}
+              disabled={createDefaultsMutation.isPending || isUsingMockData}
+              className={isUsingMockData ? 'opacity-50 cursor-not-allowed' : ''}
             >
               {createDefaultsMutation.isPending ? 'Creating...' : 'Create Default Rooms'}
             </Button>
@@ -117,6 +228,7 @@ const RoomsList = () => {
             <div className="ml-4">
               <p className="text-gray-500 text-sm font-medium">Total Rooms</p>
               <p className="text-3xl font-bold text-gray-900">{filteredRooms.length}</p>
+              {isUsingMockData && <p className="text-xs text-orange-600">Demo data</p>}
             </div>
           </div>
         </Card>
@@ -131,6 +243,7 @@ const RoomsList = () => {
               <p className="text-3xl font-bold text-gray-900">
                 {filteredRooms.reduce((total, room) => total + (room.camaSolteiro || room.singleBeds || 0), 0)}
               </p>
+              {isUsingMockData && <p className="text-xs text-orange-600">Demo data</p>}
             </div>
           </div>
         </Card>
@@ -145,6 +258,7 @@ const RoomsList = () => {
               <p className="text-3xl font-bold text-gray-900">
                 {filteredRooms.reduce((total, room) => total + (room.camaCasal || room.doubleBeds || 0), 0)}
               </p>
+              {isUsingMockData && <p className="text-xs text-orange-600">Demo data</p>}
             </div>
           </div>
         </Card>
@@ -159,6 +273,7 @@ const RoomsList = () => {
               <p className="text-3xl font-bold text-gray-900">
                 {filteredRooms.reduce((total, room) => total + (room.garagem || room.parkingSpaces || 0), 0)}
               </p>
+              {isUsingMockData && <p className="text-xs text-orange-600">Demo data</p>}
             </div>
           </div>
         </Card>
@@ -188,7 +303,11 @@ const RoomsList = () => {
             <h3 className="text-xl font-semibold text-gray-600 mb-2">No rooms found</h3>
             <p className="text-gray-500 mb-6">Start by adding your first room to the system.</p>
             <div className="flex justify-center space-x-4">
-              <Button onClick={handleCreateDefaults}>
+              <Button 
+                onClick={handleCreateDefaults}
+                disabled={isUsingMockData}
+                className={isUsingMockData ? 'opacity-50 cursor-not-allowed' : ''}
+              >
                 Create Default Rooms
               </Button>
               <Link to="/rooms/new">
@@ -251,6 +370,8 @@ const RoomsList = () => {
                     variant="danger" 
                     size="sm"
                     onClick={() => handleDeleteClick(room)}
+                    disabled={isUsingMockData}
+                    className={isUsingMockData ? 'opacity-50 cursor-not-allowed' : ''}
                   >
                     <FaTrash className="mr-1" />
                     Delete

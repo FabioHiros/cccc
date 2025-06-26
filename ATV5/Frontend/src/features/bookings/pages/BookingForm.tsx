@@ -1,4 +1,4 @@
-// src/features/bookings/pages/BookingForm.tsx - FIXED DATE HANDLING
+// src/features/bookings/pages/BookingForm.tsx - COMPLETE FIXED VERSION
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -20,6 +20,33 @@ const BookingForm = () => {
     checkIn: '',
     checkOut: ''
   });
+
+  // Helper function to format dates safely
+  const formatDateForInput = (dateString: string | null | undefined): string => {
+    if (!dateString) return '';
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return '';
+      
+      // Get local date in YYYY-MM-DD format
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    } catch (error) {
+      console.warn('Date formatting error:', error);
+      return '';
+    }
+  };
+
+  // Get today's date in YYYY-MM-DD format for min attribute
+  const getTodayDate = (): string => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
   // Fetch existing booking data if editing
   const { data: bookingResponse, isLoading: loadingBooking } = useQuery({
@@ -50,19 +77,6 @@ const BookingForm = () => {
     }
   });
 
-  // FIXED: Safe date formatting function
-  const formatDateForInput = (dateString: string) => {
-    if (!dateString) return '';
-    try {
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) return '';
-      return date.toISOString().split('T')[0];
-    } catch (error) {
-      console.warn('Date formatting error:', error);
-      return '';
-    }
-  };
-
   // Extract data safely
   const existingBooking = bookingResponse?.data || bookingResponse;
   const primaryGuests = guestsResponse?.data || guestsResponse || [];
@@ -70,17 +84,22 @@ const BookingForm = () => {
 
   useEffect(() => {
     if (existingBooking && isEditing) {
+      console.log('📋 Loading existing booking:', existingBooking);
+      
       setFormData({
-        titularId: existingBooking.primaryId || '',
-        acomodacaoId: existingBooking.roomId || '',
-        checkIn: formatDateForInput(existingBooking.arrivalDate),
-        checkOut: formatDateForInput(existingBooking.departDate)
+        titularId: existingBooking.primaryId || existingBooking.titularId || '',
+        acomodacaoId: existingBooking.roomId || existingBooking.acomodacaoId || '',
+        checkIn: formatDateForInput(existingBooking.arrivalDate || existingBooking.checkIn),
+        checkOut: formatDateForInput(existingBooking.departDate || existingBooking.checkOut)
       });
     }
   }, [existingBooking, isEditing]);
 
   const handleInputChange = (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = event.target;
+    
+    console.log(`📝 Form field changed: ${name} = ${value}`);
+    
     setFormData(prevData => ({
       ...prevData,
       [name]: value
@@ -88,6 +107,8 @@ const BookingForm = () => {
   };
 
   const validateForm = () => {
+    console.log('🔍 Validating form:', formData);
+    
     if (!formData.titularId) {
       setErrorMessage('Please select a primary guest');
       return false;
@@ -105,8 +126,17 @@ const BookingForm = () => {
       return false;
     }
     
-    const checkInDate = new Date(formData.checkIn);
-    const checkOutDate = new Date(formData.checkOut);
+    const checkInDate = new Date(formData.checkIn + 'T00:00:00');
+    const checkOutDate = new Date(formData.checkOut + 'T00:00:00');
+    
+    console.log('📅 Date validation:', {
+      checkInString: formData.checkIn,
+      checkOutString: formData.checkOut,
+      checkInDate,
+      checkOutDate,
+      checkInTime: checkInDate.getTime(),
+      checkOutTime: checkOutDate.getTime()
+    });
     
     if (isNaN(checkInDate.getTime()) || isNaN(checkOutDate.getTime())) {
       setErrorMessage('Please enter valid dates');
@@ -118,17 +148,25 @@ const BookingForm = () => {
       return false;
     }
     
-    // Check if check-in is not in the past (only for new bookings)
-    if (!isEditing && checkInDate < new Date()) {
-      setErrorMessage('Check-in date cannot be in the past');
-      return false;
+    // Only check for past dates if creating new booking
+    if (!isEditing) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      if (checkInDate < today) {
+        setErrorMessage('Check-in date cannot be in the past');
+        return false;
+      }
     }
     
+    console.log('✅ Form validation passed');
     return true;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    console.log('🚀 Starting form submission');
     
     if (!validateForm()) {
       setSubmitStatus('error');
@@ -140,14 +178,21 @@ const BookingForm = () => {
     
     try {
       if (isEditing && id) {
+        console.log('📝 Updating existing booking...');
+        
         // Update existing booking
         const updateData: UpdateEstadiaInput = {
           acomodacaoId: formData.acomodacaoId,
           checkIn: formData.checkIn,
           checkOut: formData.checkOut
         };
+        
+        console.log('📤 Sending update data:', updateData);
         await estadiaService.updateEstadia(id, updateData);
+        console.log('✅ Booking updated successfully');
       } else {
+        console.log('➕ Creating new booking...');
+        
         // Create new booking
         const createData: CreateEstadiaInput = {
           titularId: formData.titularId,
@@ -155,17 +200,30 @@ const BookingForm = () => {
           checkIn: formData.checkIn,
           checkOut: formData.checkOut
         };
+        
+        console.log('📤 Sending create data:', createData);
         await estadiaService.createEstadia(createData);
+        console.log('✅ Booking created successfully');
       }
       
       setSubmitStatus('success');
       setTimeout(() => {
         navigate('/bookings');
       }, 1500);
-    } catch (error) {
+    } catch (error: any) {
+      console.error('❌ Booking save error:', error);
+      
       setSubmitStatus('error');
-      setErrorMessage('Error saving booking. Please try again.');
-      console.error('Booking save error:', error);
+      
+      // Extract error message from response
+      let errorMsg = 'Error saving booking. Please try again.';
+      if (error.response?.data?.message) {
+        errorMsg = error.response.data.message;
+      } else if (error.message) {
+        errorMsg = error.message;
+      }
+      
+      setErrorMessage(errorMsg);
     }
   };
 
@@ -173,14 +231,16 @@ const BookingForm = () => {
   const calculateDuration = () => {
     if (formData.checkIn && formData.checkOut) {
       try {
-        const checkInDate = new Date(formData.checkIn);
-        const checkOutDate = new Date(formData.checkOut);
+        const checkInDate = new Date(formData.checkIn + 'T00:00:00');
+        const checkOutDate = new Date(formData.checkOut + 'T00:00:00');
+        
         if (isNaN(checkInDate.getTime()) || isNaN(checkOutDate.getTime())) {
           return 0;
         }
-        const diffTime = Math.abs(checkOutDate.getTime() - checkInDate.getTime());
+        
+        const diffTime = checkOutDate.getTime() - checkInDate.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        return diffDays;
+        return Math.max(0, diffDays);
       } catch (error) {
         return 0;
       }
@@ -193,6 +253,8 @@ const BookingForm = () => {
   if (loadingBooking || loadingGuests || loadingRooms) {
     return <Spinner />;
   }
+
+  const todayDate = getTodayDate();
 
   return (
     <div className="space-y-6">
@@ -285,10 +347,13 @@ const BookingForm = () => {
                   name="checkIn"
                   value={formData.checkIn}
                   onChange={handleInputChange}
-                  min={isEditing ? undefined : new Date().toISOString().split('T')[0]}
+                  min={isEditing ? undefined : todayDate}
                   className="w-full px-4 py-3 border-2 border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-all duration-200"
                   required
                 />
+                <p className="mt-1 text-xs text-gray-500">
+                  {isEditing ? 'Edit mode: past dates allowed' : `Minimum date: ${todayDate}`}
+                </p>
               </div>
 
               <div>
@@ -301,10 +366,13 @@ const BookingForm = () => {
                   name="checkOut"
                   value={formData.checkOut}
                   onChange={handleInputChange}
-                  min={formData.checkIn || new Date().toISOString().split('T')[0]}
+                  min={formData.checkIn || todayDate}
                   className="w-full px-4 py-3 border-2 border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-all duration-200"
                   required
                 />
+                <p className="mt-1 text-xs text-gray-500">
+                  Must be after check-in date
+                </p>
               </div>
             </div>
           </div>
@@ -330,12 +398,21 @@ const BookingForm = () => {
               {formData.checkIn && formData.checkOut && (
                 <div className="mt-4 p-3 bg-white rounded-lg">
                   <p className="text-center text-gray-700">
-                    <strong>Stay Period:</strong> {new Date(formData.checkIn).toLocaleDateString()} - {new Date(formData.checkOut).toLocaleDateString()}
+                    <strong>Stay Period:</strong> {formData.checkIn} to {formData.checkOut}
                   </p>
                 </div>
               )}
             </div>
           )}
+
+          {/* Debug Information (remove in production) */}
+          <div className="bg-gray-50 p-4 rounded-lg text-xs text-gray-600">
+            <h5 className="font-semibold mb-2">Debug Info:</h5>
+            <p><strong>Form Data:</strong> {JSON.stringify(formData, null, 2)}</p>
+            <p><strong>Today:</strong> {todayDate}</p>
+            <p><strong>Duration:</strong> {duration} days</p>
+            <p><strong>Is Editing:</strong> {isEditing ? 'Yes' : 'No'}</p>
+          </div>
 
           {/* Status Messages */}
           {submitStatus === 'success' && (

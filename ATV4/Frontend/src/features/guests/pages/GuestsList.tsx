@@ -1,12 +1,48 @@
-// src/features/guests/pages/GuestsList.tsx - FIXED FOR ACTUAL API
+// src/features/guests/pages/GuestsList.tsx - WITH MOCK DATA FALLBACK
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { FaPlus, FaSearch, FaEye, FaTrash, FaUsers, FaUserFriends } from 'react-icons/fa';
+import { FaPlus, FaSearch, FaEye, FaTrash, FaUsers, FaUserFriends, FaExclamationTriangle } from 'react-icons/fa';
 import { PageHeader, Button, Card, Spinner, Table, Modal, Alert } from '../../../components/ui';
 import { clienteService } from '../../../api/services';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+
+// Mock data for when backend is down
+const mockGuests = [
+  {
+    id: 'mock-guest-1',
+    fullName: 'João Silva Santos',
+    displayName: 'João Silva',
+    birthDate: '1985-03-15T00:00:00.000Z',
+    registrationDate: '2025-06-20T00:00:00.000Z',
+    primaryGuestId: null,
+  },
+  {
+    id: 'mock-guest-2',
+    fullName: 'Maria Silva Santos',
+    displayName: 'Maria',
+    birthDate: '1987-08-22T00:00:00.000Z',
+    registrationDate: '2025-06-20T00:00:00.000Z',
+    primaryGuestId: 'mock-guest-1',
+  },
+  {
+    id: 'mock-guest-3',
+    fullName: 'Carlos Eduardo Mendes',
+    displayName: 'Carlos',
+    birthDate: '1990-12-05T00:00:00.000Z',
+    registrationDate: '2025-06-22T00:00:00.000Z',
+    primaryGuestId: null,
+  },
+  {
+    id: 'mock-guest-4',
+    fullName: 'Ana Paula Costa',
+    displayName: 'Ana',
+    birthDate: '1992-09-18T00:00:00.000Z',
+    registrationDate: '2025-06-23T00:00:00.000Z',
+    primaryGuestId: null,
+  }
+];
 
 // SAFE DATE FORMATTING HELPER FUNCTION
 const formatSafeDate = (dateString: string | null | undefined): string => {
@@ -30,26 +66,34 @@ const GuestsList = () => {
   const [deleteStatus, setDeleteStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [deleteError, setDeleteError] = useState('');
 
-  // KEEP EXISTING API CALL - NO CHANGES TO BACKEND INTEGRATION
+  // TRY TO FETCH FROM BACKEND, FALLBACK TO MOCK DATA
   const { data: response, isLoading, isError, refetch } = useQuery({
     queryKey: ['guests'],
     queryFn: async () => {
       const response = await clienteService.getAllClientes();
       console.log('🔍 Guests API Response:', response);
       return response.data;
-    }
+    },
+    retry: 1, // Only retry once
+    retryDelay: 1000, // Wait 1 second before retry
   });
 
-  // Extract guests data from response - handle both data.data and data structures
-  const guests = response?.data || response || [];
+  // Extract guests data from response - handle both data.data and data structures, or use mock data
+  const guests = isError ? mockGuests : (response?.data || response || []);
+  const isUsingMockData = isError;
 
   const handleDeleteClick = (guest: any) => {
+    if (isUsingMockData) {
+      // Don't allow deletion in mock mode
+      alert('⚠️ Demo Mode: Backend is offline. Delete operations are disabled.');
+      return;
+    }
     setSelectedGuest(guest);
     setShowDeleteModal(true);
   };
 
   const confirmDelete = async () => {
-    if (!selectedGuest) return;
+    if (!selectedGuest || isUsingMockData) return;
     
     setDeleteStatus('loading');
     try {
@@ -86,17 +130,24 @@ const GuestsList = () => {
     return <Spinner />;
   }
 
-  if (isError) {
-    return (
-      <Alert 
-        type="error" 
-        message="Error loading guests. Please try again." 
-      />
-    );
-  }
-
   return (
     <div className="space-y-6">
+      {/* Offline Banner */}
+      {isUsingMockData && (
+        <Alert 
+          type="warning" 
+          message={
+            <div className="flex items-center">
+              <FaExclamationTriangle className="mr-2" />
+              <span>
+                <strong>Demo Mode:</strong> Backend is offline. Showing sample data. 
+                Forms are functional but changes won't be saved.
+              </span>
+            </div>
+          }
+        />
+      )}
+
       {/* Page Header */}
       <PageHeader
         title="Guest Management"
@@ -121,6 +172,7 @@ const GuestsList = () => {
             <div className="ml-4">
               <p className="text-gray-500 text-sm font-medium">Total Guests</p>
               <p className="text-3xl font-bold text-gray-900">{filteredGuests.length}</p>
+              {isUsingMockData && <p className="text-xs text-orange-600">Demo data</p>}
             </div>
           </div>
         </Card>
@@ -133,6 +185,7 @@ const GuestsList = () => {
             <div className="ml-4">
               <p className="text-gray-500 text-sm font-medium">Primary Guests</p>
               <p className="text-3xl font-bold text-gray-900">{primaryGuests.length}</p>
+              {isUsingMockData && <p className="text-xs text-orange-600">Demo data</p>}
             </div>
           </div>
         </Card>
@@ -145,6 +198,7 @@ const GuestsList = () => {
             <div className="ml-4">
               <p className="text-gray-500 text-sm font-medium">Companions</p>
               <p className="text-3xl font-bold text-gray-900">{companions.length}</p>
+              {isUsingMockData && <p className="text-xs text-orange-600">Demo data</p>}
             </div>
           </div>
         </Card>
@@ -220,6 +274,8 @@ const GuestsList = () => {
                     variant="danger" 
                     size="sm"
                     onClick={() => handleDeleteClick(guest)}
+                    disabled={isUsingMockData}
+                    className={isUsingMockData ? 'opacity-50 cursor-not-allowed' : ''}
                   >
                     <FaTrash className="mr-1" />
                     Delete

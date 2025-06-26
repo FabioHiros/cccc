@@ -1,4 +1,4 @@
-// src/features/bookings/pages/BookingDetail.tsx - FIXED FOR BACKEND API
+// src/features/bookings/pages/BookingDetail.tsx - FIXED STATUS LOGIC
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { FaEdit, FaUser, FaBed, FaCalendarAlt, FaClock, FaMapMarkerAlt } from 'react-icons/fa';
@@ -36,18 +36,48 @@ const BookingDetail = () => {
   const checkIn = new Date(booking.arrivalDate);
   const checkOut = new Date(booking.departDate);
   const duration = differenceInDays(checkOut, checkIn);
-  const today = new Date();
 
-  let status = 'upcoming';
-  let statusColor = 'bg-blue-100 text-blue-800';
-  
-  if (checkIn <= today && checkOut >= today) {
-    status = 'active';
-    statusColor = 'bg-green-100 text-green-800';
-  } else if (checkOut < today) {
-    status = 'completed';
-    statusColor = 'bg-gray-100 text-gray-800';
-  }
+  // FIXED: Same status logic as BookingsList
+  const calculateStatus = () => {
+    try {
+      // Parse dates as date strings to avoid timezone issues
+      const arrivalDateStr = booking.arrivalDate.split('T')[0]; // Get just YYYY-MM-DD part
+      const departDateStr = booking.departDate.split('T')[0];   // Get just YYYY-MM-DD part
+      
+      // Get today as YYYY-MM-DD string
+      const today = new Date();
+      const todayStr = today.getFullYear() + '-' + 
+                     String(today.getMonth() + 1).padStart(2, '0') + '-' + 
+                     String(today.getDate()).padStart(2, '0');
+
+      const checkInDateStr = arrivalDateStr;  
+      const checkOutDateStr = departDateStr;  
+      const todayDateStr = todayStr;         
+
+      console.log('📅 BookingDetail status calculation:', {
+        checkInDateStr,
+        checkOutDateStr, 
+        todayDateStr,
+        'checkIn <= today': checkInDateStr <= todayDateStr,
+        'checkOut >= today': checkOutDateStr >= todayDateStr,
+        'checkOut < today': checkOutDateStr < todayDateStr
+      });
+
+      // Use same logic as BookingsList
+      if (checkInDateStr <= todayDateStr && checkOutDateStr >= todayDateStr) {
+        return { status: 'active', color: 'bg-green-100 text-green-800' };
+      } else if (checkOutDateStr < todayDateStr) {
+        return { status: 'completed', color: 'bg-gray-100 text-gray-800' };
+      } else {
+        return { status: 'upcoming', color: 'bg-blue-100 text-blue-800' };
+      }
+    } catch (error) {
+      console.error('Status calculation error:', error);
+      return { status: 'upcoming', color: 'bg-blue-100 text-blue-800' };
+    }
+  };
+
+  const { status, color } = calculateStatus();
 
   return (
     <div className="space-y-6">
@@ -68,7 +98,7 @@ const BookingDetail = () => {
       <Card className="p-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <span className={`inline-flex px-4 py-2 text-sm font-semibold rounded-full capitalize ${statusColor}`}>
+            <span className={`inline-flex px-4 py-2 text-sm font-semibold rounded-full capitalize ${color}`}>
               {status}
             </span>
             <div>
@@ -306,7 +336,7 @@ const BookingDetail = () => {
         </Card>
       </div>
 
-      {/* Booking Summary - ONLY 3 FIELDS */}
+      {/* Booking Summary */}
       <Card className="p-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Booking Summary</h3>
         <div className="bg-gradient-to-r from-pink-50 to-pink-100 p-6 rounded-lg border-2 border-pink-200">

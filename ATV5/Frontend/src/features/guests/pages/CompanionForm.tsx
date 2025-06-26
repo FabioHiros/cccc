@@ -1,4 +1,4 @@
-// src/features/guests/pages/CompanionForm.tsx - FIXED FOR BACKEND API
+// src/features/guests/pages/CompanionForm.tsx - FIXED TO INHERIT PRIMARY GUEST DATA
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { PageHeader, Card, Button, Alert, Spinner } from '../../../components/ui';
@@ -93,7 +93,21 @@ const CompanionForm = () => {
     setErrorMessage('');
     
     try {
-      await clienteService.createDependente(primaryGuestId, formData);
+      // Create companion using the proper companion endpoint
+      const companionData = {
+        nome: formData.nome,
+        nomeSocial: formData.nomeSocial,
+        dataNascimento: formData.dataNascimento,
+        documento: {
+          tipo: formData.documento.tipo,
+          numero: formData.documento.numero,
+          dataExpedicao: formData.documento.dataExpedicao
+        }
+      };
+
+      // Use the createDependente method which properly sets primaryGuestId
+      await clienteService.createDependente(primaryGuestId, companionData);
+      
       setSubmitStatus('success');
       setTimeout(() => {
         navigate(`/guests/${primaryGuestId}`);
@@ -124,9 +138,9 @@ const CompanionForm = () => {
         subtitle={`Adding companion for ${primaryGuest?.fullName || 'Unknown Guest'}`}
       />
 
-      {/* Primary Guest Info */}
+      {/* Primary Guest Info with Inherited Data Preview */}
       <Card className="p-6 bg-gradient-to-r from-pink-50 to-pink-100 border-2 border-pink-200">
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-4 mb-4">
           <div className="p-3 bg-pink-500 rounded-full">
             <span className="text-white text-xl font-bold">👤</span>
           </div>
@@ -136,6 +150,39 @@ const CompanionForm = () => {
             {primaryGuest?.displayName && (
               <p className="text-gray-500 text-sm">Display Name: {primaryGuest.displayName}</p>
             )}
+          </div>
+        </div>
+
+        {/* Show what will be inherited */}
+        <div className="bg-white p-4 rounded-lg border border-pink-200">
+          <h4 className="text-sm font-semibold text-gray-700 mb-3">🔗 Data that will be inherited by the companion:</h4>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            {/* Address */}
+            <div>
+              <p className="font-medium text-gray-600 mb-1">📍 Address:</p>
+              {primaryGuest?.address ? (
+                <div className="text-gray-500">
+                  <p>{primaryGuest.address.street}</p>
+                  <p>{primaryGuest.address.city}, {primaryGuest.address.region}</p>
+                  <p>{primaryGuest.address.country} - {primaryGuest.address.postalCode}</p>
+                </div>
+              ) : (
+                <p className="text-gray-400 italic">No address to inherit</p>
+              )}
+            </div>
+
+            {/* Contact */}
+            <div>
+              <p className="font-medium text-gray-600 mb-1">📞 Contact:</p>
+              {primaryGuest?.contacts?.[0] ? (
+                <p className="text-gray-500">
+                  ({primaryGuest.contacts[0].areaCode}) {primaryGuest.contacts[0].number}
+                </p>
+              ) : (
+                <p className="text-gray-400 italic">No contact to inherit</p>
+              )}
+            </div>
           </div>
         </div>
       </Card>
@@ -248,6 +295,20 @@ const CompanionForm = () => {
                   onChange={handleInputChange}
                   className="w-full px-4 py-3 border-2 border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-all duration-200"
                 />
+              </div>
+            </div>
+          </div>
+
+          {/* Note about inherited data */}
+          <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+            <div className="flex items-start">
+              <span className="text-blue-500 text-xl mr-3">ℹ️</span>
+              <div>
+                <p className="text-blue-800 font-medium mb-1">Automatic Data Inheritance</p>
+                <p className="text-blue-700 text-sm">
+                  This companion will automatically inherit the address and contact information from the primary guest. 
+                  Only the personal information and document details need to be provided.
+                </p>
               </div>
             </div>
           </div>

@@ -1,3 +1,4 @@
+// src/api/services.ts - UPDATED WITH PROPER UPDATE LOGIC
 import api from './axios';
 import type {
     Cliente,
@@ -10,49 +11,45 @@ import type {
     UpdateClienteInput,
     UpdateEnderecoInput,
     UpdateAcomodacaoInput,
-    UpdateEstadiaInput,
-    Documento,
-    Telefone,
-    Endereco
+    UpdateEstadiaInput
 } from '../types';
 
-// Cliente services with proper field mapping
+// Guest services - FIXED to match your backend API endpoints
 export const clienteService = {
-  getAllClientes: () => api.get<Cliente[]>('/guests'),
+  // GET /api/v1/guests
+  getAllClientes: () => api.get('/v1/guests'),
   
-  getClienteById: (id: string) => api.get<Cliente>(`/guests/${id}`),
+  // GET /api/v1/guests/:id
+  getClienteById: (id: string) => api.get(`/v1/guests/${id}`),
   
-  getAllTitulares: () => api.get<Cliente[]>('/guests/primary'),
+  // GET /api/v1/guests/primary
+  getAllTitulares: () => api.get('/v1/guests/primary'),
   
-  getAllDependentes: () => api.get<Cliente[]>('/guests/companions'),
+  // GET /api/v1/guests/companions
+  getAllDependentes: () => api.get('/v1/guests/companions'),
   
+  // GET /api/v1/guests/primary/:primaryId/companions
   getDependentesByTitularId: (titularId: string) => 
-    api.get<Cliente[]>(`/guests/primary/${titularId}/companions`),
+    api.get(`/v1/guests/primary/${titularId}/companions`),
   
-  // FIXED: Map frontend data to backend format for primary guest creation
+  // POST /api/v1/guests - Create primary guest
   createTitular: (data: CreateTitularInput) => 
-    api.post<Cliente>('/guests/primary', {
+    api.post('/v1/guests', {
       fullName: data.fullName,
       displayName: data.displayName,
       birthDate: data.birthDate,
       address: data.address,
-      contact: {
-        areaCode: data.contact.areaCode,
-        number: data.contact.number
-      },
-      document: {
-        category: data.document.category,
-        identifier: data.document.identifier,
-        issuedDate: data.document.issuedDate
-      }
+      contact: data.contact,
+      document: data.document
     }),
   
-  // FIXED: Map frontend data to backend format for companion creation
+  // POST /api/v1/guests - Create companion (with primaryGuestId)
   createDependente: (titularId: string, data: CreateDependenteInput) => 
-    api.post<Cliente>(`/guests/primary/${titularId}/companion`, {
+    api.post('/v1/guests', {
       fullName: data.nome,
       displayName: data.nomeSocial,
       birthDate: data.dataNascimento,
+      primaryGuestId: titularId, // This is the key field that was missing!
       document: {
         category: data.documento.tipo,
         identifier: data.documento.numero,
@@ -60,58 +57,64 @@ export const clienteService = {
       }
     }),
   
-  // FIXED: Map frontend data to backend format for guest updates
+  // PUT /api/v1/guests/:id - UPDATED: Now properly handles all guest data
   updateCliente: (id: string, data: UpdateClienteInput) => 
-    api.put<Cliente>(`/guests/${id}`, {
-      fullName: data.fullName,
-      displayName: data.displayName,
-      birthDate: data.birthDate
-    }),
+    api.put(`/v1/guests/${id}`, data),
   
-  // FIXED: Map frontend data to backend format for address updates
+  // Update address (handled via guest update)
   updateClienteEndereco: (id: string, data: UpdateEnderecoInput) => 
-    api.put<Endereco>(`/guests/${id}/address`, {
-      street: data.street || data.rua,
-      district: data.district || data.bairro,
-      city: data.city || data.cidade,
-      region: data.region || data.estado,
-      country: data.country || data.pais,
-      postalCode: data.postalCode || data.codigoPostal
+    api.put(`/v1/guests/${id}`, {
+      address: {
+        street: data.street || data.rua,
+        district: data.district || data.bairro,
+        city: data.city || data.cidade,
+        region: data.region || data.estado,
+        country: data.country || data.pais,
+        postalCode: data.postalCode || data.codigoPostal
+      }
     }),
   
-  // FIXED: Map frontend data to backend format for document creation
-  addDocumentoToCliente: (id: string, data: { category?: string, tipo?: 'CPF' | 'RG' | 'Passaporte', identifier?: string, numero?: string, issuedDate?: string, dataExpedicao?: string }) => 
-    api.post<Documento>(`/guests/${id}/document`, {
-      category: data.category || data.tipo,
-      identifier: data.identifier || data.numero,
-      issuedDate: data.issuedDate || data.dataExpedicao
+  // Add document (handled via guest update)
+  addDocumentoToCliente: (id: string, data: any) => 
+    api.put(`/v1/guests/${id}`, {
+      document: {
+        category: data.category || data.tipo,
+        identifier: data.identifier || data.numero,
+        issuedDate: data.issuedDate || data.dataExpedicao
+      }
     }),
   
-  // FIXED: Map frontend data to backend format for contact creation
-  addTelefoneToCliente: (id: string, data: { areaCode?: string, ddd?: string, number?: string, numero?: string }) => 
-    api.post<Telefone>(`/guests/${id}/contact`, {
-      areaCode: data.areaCode || data.ddd,
-      number: data.number || data.numero
+  // Add contact (handled via guest update)
+  addTelefoneToCliente: (id: string, data: any) => 
+    api.put(`/v1/guests/${id}`, {
+      contact: {
+        areaCode: data.areaCode || data.ddd,
+        number: data.number || data.numero
+      }
     }),
   
+  // DELETE /api/v1/guests/:id
   deleteCliente: (id: string) => 
-    api.delete(`/guests/${id}`)
+    api.delete(`/v1/guests/${id}`)
 };
 
-// Acomodacao services with proper data mapping
+// Room services - FIXED to match your backend API endpoints
 export const acomodacaoService = {
+  // GET /api/v1/rooms
   getAllAcomodacoes: () => 
-    api.get<Acomodacao[]>('/rooms'),
+    api.get('/v1/rooms'),
   
+  // GET /api/v1/rooms/:id
   getAcomodacaoById: (id: string) => 
-    api.get<Acomodacao>(`/rooms/${id}`),
+    api.get(`/v1/rooms/${id}`),
   
+  // POST /api/v1/rooms/standard
   createDefaultAcomodacoes: () => 
-    api.post<Acomodacao[]>('/rooms/standard'),
+    api.post('/v1/rooms/standard'),
   
-  // FIXED: Map frontend data to backend format
+  // POST /api/v1/rooms
   createCustomAcomodacao: (data: CreateAcomodacaoInput) => 
-    api.post<Acomodacao>('/rooms', {
+    api.post('/v1/rooms', {
       designation: data.nomeAcomodacao,
       singleBeds: data.camaSolteiro,
       doubleBeds: data.camaCasal,
@@ -120,9 +123,9 @@ export const acomodacaoService = {
       parkingSpaces: data.garagem
     }),
   
-  // FIXED: Map frontend data to backend format
+  // PUT /api/v1/rooms/:id
   updateAcomodacao: (id: string, data: UpdateAcomodacaoInput) => 
-    api.put<Acomodacao>(`/rooms/${id}`, {
+    api.put(`/v1/rooms/${id}`, {
       designation: data.nomeAcomodacao,
       singleBeds: data.camaSolteiro,
       doubleBeds: data.camaCasal,
@@ -131,38 +134,43 @@ export const acomodacaoService = {
       parkingSpaces: data.garagem
     }),
   
+  // DELETE /api/v1/rooms/:id
   deleteAcomodacao: (id: string) => 
-    api.delete(`/rooms/${id}`)
+    api.delete(`/v1/rooms/${id}`)
 };
 
-// Estadia services with proper data mapping
+// Booking services - FIXED to match your backend API endpoints
 export const estadiaService = {
+  // GET /api/v1/bookings
   getAllEstadias: () => 
-    api.get<Estadia[]>('/bookings'),
+    api.get('/v1/bookings'),
   
+  // GET /api/v1/bookings/:id
   getEstadiaById: (id: string) => 
-    api.get<Estadia>(`/bookings/${id}`),
+    api.get(`/v1/bookings/${id}`),
   
+  // GET /api/v1/bookings/primary/:primaryId
   getEstadiasByTitularId: (titularId: string) => 
-    api.get<Estadia[]>(`/bookings/primary/${titularId}`),
+    api.get(`/v1/bookings/primary/${titularId}`),
   
-  // FIXED: Map frontend data to backend format
+  // POST /api/v1/bookings
   createEstadia: (data: CreateEstadiaInput) => 
-    api.post<Estadia>('/bookings', {
+    api.post('/v1/bookings', {
       primaryId: data.titularId,
       roomId: data.acomodacaoId,
       arrivalDate: data.checkIn,
       departDate: data.checkOut
     }),
   
-  // FIXED: Map frontend data to backend format
+  // PUT /api/v1/bookings/:id
   updateEstadia: (id: string, data: UpdateEstadiaInput) => 
-    api.put<Estadia>(`/bookings/${id}`, {
+    api.put(`/v1/bookings/${id}`, {
       roomId: data.acomodacaoId,
       arrivalDate: data.checkIn,
       departDate: data.checkOut
     }),
   
+  // DELETE /api/v1/bookings/:id
   deleteEstadia: (id: string) => 
-    api.delete(`/bookings/${id}`)
+    api.delete(`/v1/bookings/${id}`)
 };

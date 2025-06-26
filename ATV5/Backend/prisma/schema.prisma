@@ -1,3 +1,6 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -8,78 +11,104 @@ datasource db {
 }
 
 model Guest {
-  id               String        @id @default(uuid())
-  fullName         String
-  displayName      String
-  birthDate        DateTime
-  registrationDate DateTime      @default(now())
-  
+  id              String   @id @default(cuid())
+  fullName        String   @map("full_name")
+  displayName     String   @map("display_name")
+  birthDate       DateTime @map("birth_date")
+  registrationDate DateTime @default(now()) @map("registration_date")
+  primaryGuestId  String?  @map("primary_guest_id")
+  addressId       String?  @unique @map("address_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
   // Relations
-  documents        Documentation[]
-  contacts         ContactInfo[]
-  addressId        String?
-  address          Address?      @relation(fields: [addressId], references: [id])
-  
-  // Hierarchy
-  primaryGuestId   String?
-  primaryGuest     Guest?        @relation("GuestHierarchy", fields: [primaryGuestId], references: [id])
-  companions       Guest[]       @relation("GuestHierarchy")
-  
-  // Reservations
-  reservations     Reservation[]
-}
+  primaryGuest    Guest?       @relation("GuestCompanions", fields: [primaryGuestId], references: [id], onDelete: Cascade)
+  companions      Guest[]      @relation("GuestCompanions")
+  address         Address?     @relation(fields: [addressId], references: [id], onDelete: Cascade)
+  documents       Documentation[]
+  contacts        ContactInfo[]
+  reservations    Reservation[] @relation("PrimaryGuestReservations")
 
-model Documentation {
-  id           String   @id @default(uuid())
-  identifier   String   @unique
-  category     String
-  issuedDate   DateTime
-  
-  guestId      String
-  guest        Guest    @relation(fields: [guestId], references: [id], onDelete: Cascade)
-}
-
-model ContactInfo {
-  id       String @id @default(uuid())
-  areaCode String
-  number   String
-  
-  guestId  String
-  guest    Guest  @relation(fields: [guestId], references: [id], onDelete: Cascade)
+  @@map("guests")
 }
 
 model Address {
-  id          String  @id @default(uuid())
-  street      String
-  district    String
-  city        String
-  region      String
-  country     String
-  postalCode  String
-  
-  guests      Guest[]
+  id         String @id @default(cuid())
+  street     String
+  district   String
+  city       String
+  region     String
+  country    String
+  postalCode String @map("postal_code")
+
+  // Relations
+  guest Guest?
+
+  @@map("addresses")
+}
+
+model Documentation {
+  id         String   @id @default(cuid())
+  category   String   // CPF, RG, Passaporte
+  identifier String   // REMOVED global @unique constraint
+  issuedDate DateTime @map("issued_date")
+  guestId    String   @map("guest_id")
+
+  // Relations
+  guest Guest @relation(fields: [guestId], references: [id], onDelete: Cascade)
+
+  // Allow same document numbers for different guests (family members can share same documents in some cases)
+  // Only ensure uniqueness within the same guest
+  @@unique([guestId, identifier])
+
+  @@map("documentations")
+}
+
+model ContactInfo {
+  id       String @id @default(cuid())
+  areaCode String @map("area_code")
+  number   String
+  guestId  String @map("guest_id")
+
+  // Relations
+  guest Guest @relation(fields: [guestId], references: [id], onDelete: Cascade)
+
+  @@map("contact_infos")
 }
 
 model RoomUnit {
-  id              String        @id @default(uuid())
-  designation     String
-  singleBeds      Int
-  doubleBeds      Int
-  bathrooms       Int
-  hasAirControl   Boolean
-  parkingSpaces   Int
-  
-  reservations    Reservation[]
+  id             String  @id @default(cuid())
+  designation    String  @unique
+  singleBeds     Int     @map("single_beds")
+  doubleBeds     Int     @map("double_beds")
+  bathrooms      Int
+  hasAirControl  Boolean @map("has_air_control")
+  parkingSpaces  Int     @map("parking_spaces")
+  isActive       Boolean @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  reservations Reservation[]
+
+  @@map("room_units")
 }
 
 model Reservation {
-  id          String   @id @default(uuid())
-  arrivalDate DateTime
-  departDate  DateTime
-  
-  primaryId   String
-  primary     Guest    @relation(fields: [primaryId], references: [id])
-  
-  roomId      String
-  room        RoomUnit @relation(fields: [roomId], references: [id])
+  id          String   @id @default(cuid())
+  primaryId   String   @map("primary_id")
+  roomId      String   @map("room_id")
+  arrivalDate DateTime @map("arrival_date")
+  departDate  DateTime @map("depart_date")
+  status      String   @default("CONFIRMED") // PENDING, CONFIRMED, CHECKED_IN, CHECKED_OUT, CANCELLED, NO_SHOW
+  totalAmount Decimal? @map("total_amount") @db.Decimal(10, 2)
+  notes       String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  primary Guest    @relation("PrimaryGuestReservations", fields: [primaryId], references: [id], onDelete: Restrict)
+  room    RoomUnit @relation(fields: [roomId], references: [id], onDelete: Restrict)
+
+  @@map("reservations")
 }

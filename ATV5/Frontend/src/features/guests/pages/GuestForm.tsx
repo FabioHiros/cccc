@@ -1,4 +1,4 @@
-// src/features/guests/pages/GuestForm.tsx - FIXED FOR BACKEND API
+// src/features/guests/pages/GuestForm.tsx - FIXED EDIT LOGIC
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -28,28 +28,20 @@ const GuestForm = () => {
       postalCode: ''
     },
     // Contact Information
-    contacts: [
-      {
-        areaCode: '',
-        number: ''
-      }
-    ],
+    contact: {
+      areaCode: '',
+      number: ''
+    },
     // Document Information
-    documents: [
-      {
-        category: 'CPF' as 'CPF' | 'RG' | 'Passaporte',
-        identifier: '',
-        issuedDate: ''
-      }
-    ]
+    document: {
+      category: 'CPF' as 'CPF' | 'RG' | 'Passaporte',
+      identifier: '',
+      issuedDate: ''
+    }
   });
 
-  // Keep track of what existed before editing
-  const [originalData, setOriginalData] = useState({
-    hasAddress: false,
-    originalContactCount: 0,
-    originalDocumentCount: 0
-  });
+  // Track original data to prevent duplicates
+  const [originalData, setOriginalData] = useState<any>(null);
 
   // Fetch existing guest data if editing
   const { data: response, isLoading } = useQuery({
@@ -66,6 +58,9 @@ const GuestForm = () => {
 
   useEffect(() => {
     if (existingGuest && isEditing) {
+      // Store original data to compare changes
+      setOriginalData(existingGuest);
+      
       setFormData({
         fullName: existingGuest.fullName || '',
         displayName: existingGuest.displayName || '',
@@ -78,26 +73,15 @@ const GuestForm = () => {
           country: existingGuest.address?.country || '',
           postalCode: existingGuest.address?.postalCode || ''
         },
-        contacts: existingGuest.contacts && existingGuest.contacts.length > 0 
-          ? existingGuest.contacts.map((contact: any) => ({
-              areaCode: contact.areaCode || '',
-              number: contact.number || ''
-            }))
-          : [{ areaCode: '', number: '' }],
-        documents: existingGuest.documents && existingGuest.documents.length > 0
-          ? existingGuest.documents.map((doc: any) => ({
-              category: doc.category || 'CPF',
-              identifier: doc.identifier || '',
-              issuedDate: doc.issuedDate ? doc.issuedDate.split('T')[0] : ''
-            }))
-          : [{ category: 'CPF' as const, identifier: '', issuedDate: '' }]
-      });
-
-      // Track original data structure
-      setOriginalData({
-        hasAddress: !!existingGuest.address,
-        originalContactCount: existingGuest.contacts?.length || 0,
-        originalDocumentCount: existingGuest.documents?.length || 0
+        contact: {
+          areaCode: existingGuest.contacts?.[0]?.areaCode || '',
+          number: existingGuest.contacts?.[0]?.number || ''
+        },
+        document: {
+          category: existingGuest.documents?.[0]?.category || 'CPF',
+          identifier: existingGuest.documents?.[0]?.identifier || '',
+          issuedDate: existingGuest.documents?.[0]?.issuedDate ? existingGuest.documents[0].issuedDate.split('T')[0] : ''
+        }
       });
     }
   }, [existingGuest, isEditing]);
@@ -114,23 +98,23 @@ const GuestForm = () => {
           [field]: value
         }
       }));
-    } else if (name.startsWith('contacts.')) {
-      const [, indexStr, field] = name.split('.');
-      const index = parseInt(indexStr);
+    } else if (name.startsWith('contact.')) {
+      const field = name.split('.')[1];
       setFormData(prevData => ({
         ...prevData,
-        contacts: prevData.contacts.map((contact, i) => 
-          i === index ? { ...contact, [field]: value } : contact
-        )
+        contact: {
+          ...prevData.contact,
+          [field]: value
+        }
       }));
-    } else if (name.startsWith('documents.')) {
-      const [, indexStr, field] = name.split('.');
-      const index = parseInt(indexStr);
+    } else if (name.startsWith('document.')) {
+      const field = name.split('.')[1];
       setFormData(prevData => ({
         ...prevData,
-        documents: prevData.documents.map((doc, i) => 
-          i === index ? { ...doc, [field]: value } : doc
-        )
+        document: {
+          ...prevData.document,
+          [field]: value
+        }
       }));
     } else {
       setFormData(prevData => ({
@@ -138,34 +122,6 @@ const GuestForm = () => {
         [name]: value
       }));
     }
-  };
-
-  const addContact = () => {
-    setFormData(prevData => ({
-      ...prevData,
-      contacts: [...prevData.contacts, { areaCode: '', number: '' }]
-    }));
-  };
-
-  const removeContact = (index: number) => {
-    setFormData(prevData => ({
-      ...prevData,
-      contacts: prevData.contacts.filter((_, i) => i !== index)
-    }));
-  };
-
-  const addDocument = () => {
-    setFormData(prevData => ({
-      ...prevData,
-      documents: [...prevData.documents, { category: 'CPF' as const, identifier: '', issuedDate: '' }]
-    }));
-  };
-
-  const removeDocument = (index: number) => {
-    setFormData(prevData => ({
-      ...prevData,
-      documents: prevData.documents.filter((_, i) => i !== index)
-    }));
   };
 
   const validateForm = () => {
@@ -180,6 +136,11 @@ const GuestForm = () => {
     return true;
   };
 
+  // Helper function to check if data has changed
+  const hasDataChanged = (newData: any, originalData: any): boolean => {
+    return JSON.stringify(newData) !== JSON.stringify(originalData);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -192,111 +153,77 @@ const GuestForm = () => {
     setErrorMessage('');
     
     try {
-      if (isEditing && id) {
-        // EDITING MODE - Update each section separately
+      if (isEditing && id && originalData) {
+        // EDITING MODE - Only update what has changed
         
-        // 1. Update basic guest information
+        // 1. Always update basic guest information
         await clienteService.updateCliente(id, {
           fullName: formData.fullName,
           displayName: formData.displayName,
           birthDate: formData.birthDate
         });
-        
-        // 2. Update address if it has data
-        const hasAddressData = Object.values(formData.address).some(value => value.trim() !== '');
-        if (hasAddressData) {
+
+        // 2. Only update address if it has changed and has data
+        const addressChanged = hasDataChanged(formData.address, {
+          street: originalData.address?.street || '',
+          district: originalData.address?.district || '',
+          city: originalData.address?.city || '',
+          region: originalData.address?.region || '',
+          country: originalData.address?.country || '',
+          postalCode: originalData.address?.postalCode || ''
+        });
+
+        if (addressChanged && Object.values(formData.address).some(value => value.trim() !== '')) {
           try {
             await clienteService.updateClienteEndereco(id, formData.address);
           } catch (error) {
             console.warn('Address update failed:', error);
-            // Don't fail the whole operation if address update fails
           }
         }
+
+        // 3. Only add contact if it's new/changed and has data
+        const originalContact = {
+          areaCode: originalData.contacts?.[0]?.areaCode || '',
+          number: originalData.contacts?.[0]?.number || ''
+        };
         
-        // 3. Handle contacts - only add new contacts that have been modified/added
-        for (let i = 0; i < formData.contacts.length; i++) {
-          const contact = formData.contacts[i];
-          if (contact.areaCode.trim() && contact.number.trim()) {
-            if (i >= originalData.originalContactCount) {
-              // This is a new contact - add it
-              try {
-                await clienteService.addTelefoneToCliente(id, {
-                  areaCode: contact.areaCode,
-                  number: contact.number
-                });
-              } catch (error) {
-                console.warn('Contact add failed:', error);
-              }
-            } else {
-              // This is an existing contact that was modified - add as new contact
-              const originalContact = existingGuest.contacts?.[i];
-              if (originalContact && 
-                  (originalContact.areaCode !== contact.areaCode || originalContact.number !== contact.number)) {
-                try {
-                  await clienteService.addTelefoneToCliente(id, {
-                    areaCode: contact.areaCode,
-                    number: contact.number
-                  });
-                } catch (error) {
-                  console.warn('Modified contact add failed:', error);
-                }
-              }
-            }
+        const contactChanged = hasDataChanged(formData.contact, originalContact);
+        
+        if (contactChanged && formData.contact.areaCode.trim() && formData.contact.number.trim()) {
+          try {
+            await clienteService.addTelefoneToCliente(id, formData.contact);
+          } catch (error) {
+            console.warn('Contact add failed:', error);
           }
         }
+
+        // 4. Only add document if it's new/changed and has data
+        const originalDocument = {
+          category: originalData.documents?.[0]?.category || 'CPF',
+          identifier: originalData.documents?.[0]?.identifier || '',
+          issuedDate: originalData.documents?.[0]?.issuedDate ? originalData.documents[0].issuedDate.split('T')[0] : ''
+        };
         
-        // 4. Handle documents - only add new documents that have been modified/added
-        for (let i = 0; i < formData.documents.length; i++) {
-          const document = formData.documents[i];
-          if (document.identifier.trim()) {
-            if (i >= originalData.originalDocumentCount) {
-              // This is a new document - add it
-              try {
-                await clienteService.addDocumentoToCliente(id, {
-                  category: document.category,
-                  identifier: document.identifier,
-                  issuedDate: document.issuedDate
-                });
-              } catch (error) {
-                console.warn('Document add failed:', error);
-              }
-            } else {
-              // This is an existing document that was modified - add as new document
-              const originalDocument = existingGuest.documents?.[i];
-              if (originalDocument && 
-                  (originalDocument.category !== document.category || 
-                   originalDocument.identifier !== document.identifier ||
-                   originalDocument.issuedDate?.split('T')[0] !== document.issuedDate)) {
-                try {
-                  await clienteService.addDocumentoToCliente(id, {
-                    category: document.category,
-                    identifier: document.identifier,
-                    issuedDate: document.issuedDate
-                  });
-                } catch (error) {
-                  console.warn('Modified document add failed:', error);
-                }
-              }
-            }
+        const documentChanged = hasDataChanged(formData.document, originalDocument);
+        
+        if (documentChanged && formData.document.identifier.trim()) {
+          try {
+            await clienteService.addDocumentoToCliente(id, formData.document);
+          } catch (error) {
+            console.warn('Document add failed:', error);
           }
         }
         
       } else {
         // CREATING MODE - Send all data together
-        const createData = {
+        await clienteService.createTitular({
           fullName: formData.fullName,
           displayName: formData.displayName,
           birthDate: formData.birthDate,
-          address: formData.address,
-          contact: formData.contacts[0], // First contact for primary creation
-          document: {
-            category: formData.documents[0].category,
-            identifier: formData.documents[0].identifier,
-            issuedDate: formData.documents[0].issuedDate
-          }
-        };
-        
-        await clienteService.createTitular(createData);
+          address: Object.values(formData.address).some(value => value.trim()) ? formData.address : undefined,
+          contact: (formData.contact.areaCode.trim() && formData.contact.number.trim()) ? formData.contact : undefined,
+          document: formData.document.identifier.trim() ? formData.document : undefined
+        });
       }
       
       setSubmitStatus('success');
@@ -478,137 +405,95 @@ const GuestForm = () => {
 
           {/* Contact Information */}
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 pb-2 border-b-2 border-pink-100">
-                Contact Information
-              </h3>
-              <Button type="button" variant="secondary" onClick={addContact}>
-                Add Contact
-              </Button>
-            </div>
-
-            {formData.contacts.map((contact, index) => (
-              <div key={index} className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4 p-4 bg-gray-50 rounded-lg">
-                <div>
-                  <label htmlFor={`contacts.${index}.areaCode`} className="block text-sm font-medium text-gray-700 mb-2">
-                    Area Code
-                  </label>
-                  <input
-                    type="text"
-                    id={`contacts.${index}.areaCode`}
-                    name={`contacts.${index}.areaCode`}
-                    value={contact.areaCode}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-3 border-2 border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-all duration-200"
-                    placeholder="11"
-                    maxLength={3}
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor={`contacts.${index}.number`} className="block text-sm font-medium text-gray-700 mb-2">
-                    Phone Number
-                  </label>
-                  <input
-                    type="text"
-                    id={`contacts.${index}.number`}
-                    name={`contacts.${index}.number`}
-                    value={contact.number}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-3 border-2 border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-all duration-200"
-                    placeholder="999999999"
-                  />
-                </div>
-
-                <div className="flex items-end">
-                  {formData.contacts.length > 1 && (
-                    <Button 
-                      type="button" 
-                      variant="danger" 
-                      onClick={() => removeContact(index)}
-                      className="w-full"
-                    >
-                      Remove
-                    </Button>
-                  )}
-                </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 pb-2 border-b-2 border-pink-100">
+              Contact Information
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label htmlFor="contact.areaCode" className="block text-sm font-medium text-gray-700 mb-2">
+                  Area Code
+                </label>
+                <input
+                  type="text"
+                  id="contact.areaCode"
+                  name="contact.areaCode"
+                  value={formData.contact.areaCode}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 border-2 border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-all duration-200"
+                  placeholder="11"
+                  maxLength={3}
+                />
               </div>
-            ))}
+
+              <div>
+                <label htmlFor="contact.number" className="block text-sm font-medium text-gray-700 mb-2">
+                  Phone Number
+                </label>
+                <input
+                  type="text"
+                  id="contact.number"
+                  name="contact.number"
+                  value={formData.contact.number}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 border-2 border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-all duration-200"
+                  placeholder="999999999"
+                />
+              </div>
+            </div>
           </div>
 
           {/* Document Information */}
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 pb-2 border-b-2 border-pink-100">
-                Document Information
-              </h3>
-              <Button type="button" variant="secondary" onClick={addDocument}>
-                Add Document
-              </Button>
-            </div>
-
-            {formData.documents.map((document, index) => (
-              <div key={index} className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-4 p-4 bg-gray-50 rounded-lg">
-                <div>
-                  <label htmlFor={`documents.${index}.category`} className="block text-sm font-medium text-gray-700 mb-2">
-                    Document Type
-                  </label>
-                  <select
-                    id={`documents.${index}.category`}
-                    name={`documents.${index}.category`}
-                    value={document.category}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-3 border-2 border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-all duration-200"
-                  >
-                    <option value="CPF">CPF</option>
-                    <option value="RG">RG</option>
-                    <option value="Passaporte">Passport</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label htmlFor={`documents.${index}.identifier`} className="block text-sm font-medium text-gray-700 mb-2">
-                    Document Number
-                  </label>
-                  <input
-                    type="text"
-                    id={`documents.${index}.identifier`}
-                    name={`documents.${index}.identifier`}
-                    value={document.identifier}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-3 border-2 border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-all duration-200"
-                    placeholder="Enter document number"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor={`documents.${index}.issuedDate`} className="block text-sm font-medium text-gray-700 mb-2">
-                    Issue Date
-                  </label>
-                  <input
-                    type="date"
-                    id={`documents.${index}.issuedDate`}
-                    name={`documents.${index}.issuedDate`}
-                    value={document.issuedDate}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-3 border-2 border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-all duration-200"
-                  />
-                </div>
-
-                <div className="flex items-end">
-                  {formData.documents.length > 1 && (
-                    <Button 
-                      type="button" 
-                      variant="danger" 
-                      onClick={() => removeDocument(index)}
-                      className="w-full"
-                    >
-                      Remove
-                    </Button>
-                  )}
-                </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 pb-2 border-b-2 border-pink-100">
+              Document Information
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <label htmlFor="document.category" className="block text-sm font-medium text-gray-700 mb-2">
+                  Document Type
+                </label>
+                <select
+                  id="document.category"
+                  name="document.category"
+                  value={formData.document.category}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 border-2 border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-all duration-200"
+                >
+                  <option value="CPF">CPF</option>
+                  <option value="RG">RG</option>
+                  <option value="Passaporte">Passport</option>
+                </select>
               </div>
-            ))}
+
+              <div>
+                <label htmlFor="document.identifier" className="block text-sm font-medium text-gray-700 mb-2">
+                  Document Number
+                </label>
+                <input
+                  type="text"
+                  id="document.identifier"
+                  name="document.identifier"
+                  value={formData.document.identifier}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 border-2 border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-all duration-200"
+                  placeholder="Enter document number"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="document.issuedDate" className="block text-sm font-medium text-gray-700 mb-2">
+                  Issue Date
+                </label>
+                <input
+                  type="date"
+                  id="document.issuedDate"
+                  name="document.issuedDate"
+                  value={formData.document.issuedDate}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 border-2 border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-all duration-200"
+                />
+              </div>
+            </div>
           </div>
 
           {/* Status Messages */}

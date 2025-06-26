@@ -1,48 +1,104 @@
-// src/features/dashboard/pages/Dashboard.tsx
+// src/features/dashboard/pages/Dashboard.tsx - FIXED STATUS LOGIC
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { FaUsers, FaBed, FaCalendarAlt, FaPlus, FaArrowUp, FaEye } from 'react-icons/fa';
-import { Card, Spinner } from '../../../components/ui';
+import { FaUsers, FaBed, FaCalendarAlt, FaPlus, FaArrowUp, FaEye, FaExclamationTriangle } from 'react-icons/fa';
+import { Card, Spinner, Alert } from '../../../components/ui';
 import { clienteService, acomodacaoService, estadiaService } from '../../../api/services';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 const Dashboard = () => {
-  // KEEP ALL EXISTING API CALLS - NO BACKEND CHANGES
-  const { data: guests, isLoading: loadingGuests } = useQuery({
+  // KEEP ALL EXISTING API CALLS - WITH FALLBACK TO MOCK DATA
+  const { data: guests, isLoading: loadingGuests, isError: guestsError } = useQuery({
     queryKey: ['guestsSummary'],
     queryFn: async () => {
       const response = await clienteService.getAllClientes();
       return response.data.data || response.data;
-    }
+    },
+    retry: 1,
+    retryDelay: 1000,
   });
 
-  const { data: rooms, isLoading: loadingRooms } = useQuery({
+  const { data: rooms, isLoading: loadingRooms, isError: roomsError } = useQuery({
     queryKey: ['roomsSummary'],
     queryFn: async () => {
       const response = await acomodacaoService.getAllAcomodacoes();
       return response.data.data || response.data;
-    }
+    },
+    retry: 1,
+    retryDelay: 1000,
   });
 
-  const { data: bookings, isLoading: loadingBookings } = useQuery({
+  const { data: bookings, isLoading: loadingBookings, isError: bookingsError } = useQuery({
     queryKey: ['bookingsSummary'],
     queryFn: async () => {
       const response = await estadiaService.getAllEstadias();
       return response.data.data || response.data;
-    }
+    },
+    retry: 1,
+    retryDelay: 1000,
   });
 
-  const totalGuests = guests?.length || 0;
-  const totalRooms = rooms?.length || 0;
-  const totalBookings = bookings?.length || 0;
+  // Mock data fallbacks
+  const mockGuestsData = [{ id: '1' }, { id: '2' }, { id: '3' }];
+  const mockRoomsData = [{ id: '1' }, { id: '2' }, { id: '3' }, { id: '4' }];
+  const mockBookingsData = [
+    {
+      id: '1',
+      arrivalDate: '2025-06-25T00:00:00.000Z',
+      departDate: '2025-06-27T00:00:00.000Z'
+    },
+    {
+      id: '2', 
+      arrivalDate: '2025-06-28T00:00:00.000Z',
+      departDate: '2025-06-30T00:00:00.000Z'
+    }
+  ];
+
+  // Use real data or fallback to mock
+  const guestsData = guestsError ? mockGuestsData : guests;
+  const roomsData = roomsError ? mockRoomsData : rooms;
+  const bookingsData = bookingsError ? mockBookingsData : bookings;
   
-  const today = new Date();
-  const activeBookings = bookings?.filter(booking => {
-    const checkIn = new Date(booking.checkIn || booking.arrivalDate);
-    const checkOut = new Date(booking.checkOut || booking.departDate);
-    return checkIn <= today && checkOut >= today;
-  }) || [];
+  const isUsingMockData = guestsError || roomsError || bookingsError;
+
+  // FIXED: Status calculation function (same as BookingsList)
+  const calculateBookingStatus = (booking: any) => {
+    try {
+      // Parse dates as date strings to avoid timezone issues
+      const arrivalDateStr = booking.arrivalDate.split('T')[0]; // Get just YYYY-MM-DD part
+      const departDateStr = booking.departDate.split('T')[0];   // Get just YYYY-MM-DD part
+      
+      // Get today as YYYY-MM-DD string
+      const today = new Date();
+      const todayStr = today.getFullYear() + '-' + 
+                     String(today.getMonth() + 1).padStart(2, '0') + '-' + 
+                     String(today.getDate()).padStart(2, '0');
+
+      const checkInDateStr = arrivalDateStr;  
+      const checkOutDateStr = departDateStr;  
+      const todayDateStr = todayStr;         
+
+      // Same logic as BookingsList: checkout day is still considered active
+      if (checkInDateStr <= todayDateStr && checkOutDateStr >= todayDateStr) {
+        return 'active';
+      } else if (checkOutDateStr < todayDateStr) {
+        return 'completed';
+      } else {
+        return 'upcoming';
+      }
+    } catch (error) {
+      console.warn('Dashboard status calculation error:', error);
+      return 'upcoming';
+    }
+  };
+
+  const totalGuests = guestsData?.length || 0;
+  const totalRooms = roomsData?.length || 0;
+  const totalBookings = bookingsData?.length || 0;
+  
+  // FIXED: Use new status calculation
+  const activeBookings = bookingsData?.filter(booking => calculateBookingStatus(booking) === 'active') || [];
 
   const isLoading = loadingGuests || loadingRooms || loadingBookings;
 
@@ -56,6 +112,21 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-8">
+      {/* Offline Banner */}
+      {isUsingMockData && (
+        <Alert 
+          type="warning" 
+          message={
+            <div className="flex items-center">
+              <FaExclamationTriangle className="mr-2" />
+              <span>
+                <strong>Demo Mode:</strong> Backend is offline. Dashboard showing sample data.
+              </span>
+            </div>
+          }
+        />
+      )}
+
       {/* Welcome Header */}
       <div className="bg-gradient-to-r from-pink-500 via-pink-600 to-pink-700 rounded-2xl p-8 text-white shadow-xl">
         <div className="flex flex-col md:flex-row md:items-center justify-between">
@@ -96,6 +167,7 @@ const Dashboard = () => {
               <div className="flex items-center mt-2 text-sm">
                 <FaArrowUp className="text-green-500 mr-1" />
                 <span className="text-green-600 font-medium">Active</span>
+                {isUsingMockData && <span className="ml-2 text-xs text-orange-600">Demo</span>}
               </div>
             </div>
             <div className="p-4 bg-gradient-to-r from-pink-500 to-pink-600 rounded-xl">
@@ -112,6 +184,7 @@ const Dashboard = () => {
               <p className="text-3xl font-bold text-gray-900 mt-2">{totalRooms}</p>
               <div className="flex items-center mt-2 text-sm">
                 <span className="text-blue-600 font-medium">Available</span>
+                {isUsingMockData && <span className="ml-2 text-xs text-orange-600">Demo</span>}
               </div>
             </div>
             <div className="p-4 bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl">
@@ -128,6 +201,7 @@ const Dashboard = () => {
               <p className="text-3xl font-bold text-gray-900 mt-2">{totalBookings}</p>
               <div className="flex items-center mt-2 text-sm">
                 <span className="text-green-600 font-medium">All Time</span>
+                {isUsingMockData && <span className="ml-2 text-xs text-orange-600">Demo</span>}
               </div>
             </div>
             <div className="p-4 bg-gradient-to-r from-green-500 to-green-600 rounded-xl">
@@ -136,14 +210,15 @@ const Dashboard = () => {
           </div>
         </Card>
 
-        {/* Active Bookings */}
+        {/* Active Bookings - FIXED */}
         <Card className="p-6 hover:shadow-xl transition-all duration-300 border-2 border-purple-100">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-gray-500 text-sm font-semibold uppercase tracking-wide">Active Bookings</p>
               <p className="text-3xl font-bold text-gray-900 mt-2">{activeBookings.length}</p>
               <div className="flex items-center mt-2 text-sm">
-                <span className="text-purple-600 font-medium">Current</span>
+                <span className="text-purple-600 font-medium">Current Stays</span>
+                {isUsingMockData && <span className="ml-2 text-xs text-orange-600">Demo</span>}
               </div>
             </div>
             <div className="p-4 bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl">
@@ -202,16 +277,16 @@ const Dashboard = () => {
           </div>
         </Card>
 
-        {/* System Overview */}
+        {/* System Overview - FIXED */}
         <Card className="p-6 border-2 border-pink-100">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-xl font-bold text-gray-900">System Overview</h3>
           </div>
           <div className="space-y-6">
             <div className="flex justify-between items-center">
-              <span className="text-gray-600">Guest Occupancy</span>
+              <span className="text-gray-600">Active Occupancy</span>
               <span className="text-2xl font-bold text-pink-600">
-                {totalGuests > 0 ? Math.round((activeBookings.length / totalGuests) * 100) : 0}%
+                {totalRooms > 0 ? Math.round((activeBookings.length / totalRooms) * 100) : 0}%
               </span>
             </div>
             
@@ -219,7 +294,7 @@ const Dashboard = () => {
               <div 
                 className="bg-gradient-to-r from-pink-500 to-pink-600 h-3 rounded-full transition-all duration-500"
                 style={{ 
-                  width: `${totalGuests > 0 ? Math.round((activeBookings.length / totalGuests) * 100) : 0}%` 
+                  width: `${totalRooms > 0 ? Math.round((activeBookings.length / totalRooms) * 100) : 0}%` 
                 }}
               ></div>
             </div>
@@ -227,13 +302,28 @@ const Dashboard = () => {
             <div className="grid grid-cols-2 gap-4 mt-6">
               <div className="text-center p-4 bg-pink-50 rounded-xl">
                 <p className="text-2xl font-bold text-pink-600">{totalRooms}</p>
-                <p className="text-gray-600 text-sm">Rooms Available</p>
+                <p className="text-gray-600 text-sm">Total Rooms</p>
               </div>
               <div className="text-center p-4 bg-green-50 rounded-xl">
                 <p className="text-2xl font-bold text-green-600">{activeBookings.length}</p>
                 <p className="text-gray-600 text-sm">Active Stays</p>
               </div>
             </div>
+
+            {/* Debug info for dashboard - remove in production */}
+            {!isUsingMockData && (
+              <div className="mt-4 p-3 bg-gray-50 rounded-lg text-xs text-gray-600">
+                <p><strong>Debug:</strong> Found {activeBookings.length} active bookings out of {totalBookings} total</p>
+                {bookingsData && bookingsData.length > 0 && (
+                  <p><strong>Sample booking status:</strong> {calculateBookingStatus(bookingsData[0])}</p>
+                )}
+              </div>
+            )}
+            {isUsingMockData && (
+              <div className="mt-4 p-3 bg-orange-50 rounded-lg text-xs text-orange-600">
+                <p><strong>Demo Mode:</strong> Backend offline - showing sample statistics</p>
+              </div>
+            )}
           </div>
         </Card>
       </div>
