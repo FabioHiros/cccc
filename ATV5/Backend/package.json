@@ -1,0 +1,26 @@
+{
+  "name": "hotel-management-api",
+  "version": "2.0.0",
+  "description": "Advanced hotel management system with modern patterns",
+  "scripts": {
+    "compile": "tsc",
+    "serve": "node dist/main.js",
+    "develop": "ts-node main.ts",
+    "start": "node dist/main.js",
+    "dev": "ts-node main.ts",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "@prisma/client": "^5.22.0",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.1",
+    "cors": "^2.8.5",
+    "prisma": "^5.22.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  }
+}

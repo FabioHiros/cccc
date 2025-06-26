@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Guest {
+  id               String        @id @default(uuid())
+  fullName         String
+  displayName      String
+  birthDate        DateTime
+  registrationDate DateTime      @default(now())
+  
+  // Relations
+  documents        Documentation[]
+  contacts         ContactInfo[]
+  addressId        String?
+  address          Address?      @relation(fields: [addressId], references: [id])
+  
+  // Hierarchy
+  primaryGuestId   String?
+  primaryGuest     Guest?        @relation("GuestHierarchy", fields: [primaryGuestId], references: [id])
+  companions       Guest[]       @relation("GuestHierarchy")
+  
+  // Reservations
+  reservations     Reservation[]
+}
+
+model Documentation {
+  id           String   @id @default(uuid())
+  identifier   String   @unique
+  category     String
+  issuedDate   DateTime
+  
+  guestId      String
+  guest        Guest    @relation(fields: [guestId], references: [id], onDelete: Cascade)
+}
+
+model ContactInfo {
+  id       String @id @default(uuid())
+  areaCode String
+  number   String
+  
+  guestId  String
+  guest    Guest  @relation(fields: [guestId], references: [id], onDelete: Cascade)
+}
+
+model Address {
+  id          String  @id @default(uuid())
+  street      String
+  district    String
+  city        String
+  region      String
+  country     String
+  postalCode  String
+  
+  guests      Guest[]
+}
+
+model RoomUnit {
+  id              String        @id @default(uuid())
+  designation     String
+  singleBeds      Int
+  doubleBeds      Int
+  bathrooms       Int
+  hasAirControl   Boolean
+  parkingSpaces   Int
+  
+  reservations    Reservation[]
+}
+
+model Reservation {
+  id          String   @id @default(uuid())
+  arrivalDate DateTime
+  departDate  DateTime
+  
+  primaryId   String
+  primary     Guest    @relation(fields: [primaryId], references: [id])
+  
+  roomId      String
+  room        RoomUnit @relation(fields: [roomId], references: [id])
+}
